@@ -1,0 +1,1561 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>설비 명판 인식기</title>
+<style>
+/* 레이아웃: 상단 고정 탭 + 단계별 세로 카드 스택, 폰 1열 / 데스크톱 2열 작업대 */
+:root{
+  --bg:#f5f6f4; --surface:#ffffff; --surface-2:#eceeea; --line:#d6d9d2;
+  --fg:#1b1f1a; --fg-dim:#5d6459; --accent:#2f6f4e; --accent-soft:#dfeee5;
+  --warn:#8a5a10; --warn-soft:#fbf0d8; --bad:#9c2f2f; --good:#2f6f4e; --on-accent:#ffffff;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --bg:#141713; --surface:#1d211c; --surface-2:#262b24; --line:#363d33;
+  --fg:#e7eae3; --fg-dim:#9aa394; --accent:#6ec096; --accent-soft:#1f3a2c;
+  --warn:#e0b259; --warn-soft:#3a2e13; --bad:#e08080; --good:#6ec096; --on-accent:#10180f;
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#141713; --surface:#1d211c; --surface-2:#262b24; --line:#363d33;
+  --fg:#e7eae3; --fg-dim:#9aa394; --accent:#6ec096; --accent-soft:#1f3a2c;
+  --warn:#e0b259; --warn-soft:#3a2e13; --bad:#e08080; --good:#6ec096; --on-accent:#10180f;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--fg); font-family:var(--sans);
+  font-size:15px; line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:0 48px;
+}
+h1,h2,h3{text-wrap:balance;margin:0}
+button{font:inherit;font-family:var(--sans)}
+input,select,textarea{font:inherit;font-family:var(--sans);color:var(--fg)}
+
+header{
+  position:sticky; top:env(safe-area-inset-top,0px); z-index:20;
+  background:var(--bg); border-bottom:1px solid var(--line);
+  padding-block:12px 0; margin-inline:calc(-1 * max(16px,env(safe-area-inset-left,0px))) calc(-1 * max(16px,env(safe-area-inset-right,0px)));
+  padding-inline:max(16px,env(safe-area-inset-left,0px)) max(16px,env(safe-area-inset-right,0px));
+}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:21;background:var(--bg)}
+.brand{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.brand h1{font-size:19px;letter-spacing:-.01em;font-weight:700}
+.brand .sub{font-size:12px;color:var(--fg-dim)}
+.tabs{display:flex;gap:2px;margin-top:10px;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{
+  background:none;border:0;border-bottom:2px solid transparent;color:var(--fg-dim);
+  padding:9px 12px;cursor:pointer;white-space:nowrap;font-size:14px;font-weight:600;
+}
+.tabs button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent)}
+.tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:4px}
+
+main{max-width:960px;margin:0 auto;padding-top:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px}
+.card > h2{font-size:14px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--fg-dim);display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.step{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;flex:none}
+.hint{font-size:12.5px;color:var(--fg-dim);margin:0 0 10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+label.fld{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--fg-dim);font-weight:600;min-width:0}
+label.fld input,label.fld select,label.fld textarea{
+  background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:8px 10px;
+  font-size:14px;font-weight:400;width:100%;min-width:0;
+}
+label.fld textarea{font-family:var(--mono);font-size:12.5px;line-height:1.6;resize:vertical}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+.btn{background:var(--surface-2);color:var(--fg);border:1px solid var(--line);border-radius:7px;padding:8px 14px;cursor:pointer;font-size:14px;font-weight:600}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.sm{padding:5px 10px;font-size:12.5px}
+.btn.ghost{background:none}
+
+.camwrap{position:relative;background:#000;border-radius:8px;overflow:hidden;line-height:0}
+.camwrap video{width:100%;height:auto;display:block}
+.camwrap canvas.camov{position:absolute;inset:0;width:100%;height:100%}
+.meters{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-top:10px}
+.meter{background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:8px 10px}
+.meter .l{font-size:11px;color:var(--fg-dim);font-weight:700}
+.meter .b{height:6px;border-radius:3px;background:var(--line);margin-top:5px;overflow:hidden}
+.meter .b i{display:block;height:100%;background:var(--accent);transition:width .12s linear}
+.meter .v{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums}
+.shots{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.shots canvas{width:84px;height:auto;border:1px solid var(--line);border-radius:5px;display:block}
+.shots .ok{border-color:var(--accent);border-width:2px}
+.offscreen{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;left:-9999px}
+.drop{margin-top:10px;border:1.5px dashed var(--line);border-radius:8px;padding:18px;text-align:center;font-size:12.5px;color:var(--fg-dim)}
+.drop.over{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.stage{position:relative;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;overflow:hidden;touch-action:none}
+.stage canvas{display:block;width:100%;height:auto;max-width:100%}
+.stage .ov{position:absolute;inset:0;width:100%;height:100%}
+.preview{background:var(--surface-2);border:1px dashed var(--line);border-radius:8px;padding:8px;overflow-x:auto}
+.preview canvas{display:block;max-width:100%;height:auto;image-rendering:auto}
+.cvstack{position:relative;display:inline-block;max-width:100%;margin:0 auto}
+.cvstack #lineOv{position:absolute;inset:0;width:100%;height:100%}
+
+.slider{display:grid;grid-template-columns:minmax(60px,auto) 1fr 44px;gap:10px;align-items:center;font-size:12.5px;color:var(--fg-dim);font-weight:600}
+.slider input[type=range]{width:100%;accent-color:var(--accent)}
+.slider output{font-family:var(--mono);font-size:12px;text-align:right;color:var(--fg);font-variant-numeric:tabular-nums}
+.toggles{display:flex;gap:14px;flex-wrap:wrap;font-size:13px}
+.toggles label{display:flex;gap:6px;align-items:center;cursor:pointer;color:var(--fg)}
+.toggles input{accent-color:var(--accent);width:16px;height:16px}
+
+pre.raw{background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:10px;font-family:var(--mono);font-size:12.5px;line-height:1.65;white-space:pre-wrap;word-break:break-all;max-height:220px;overflow:auto;margin:0}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}
+.chip{background:var(--accent-soft);color:var(--accent);border:1px solid transparent;border-radius:999px;padding:3px 9px;font-size:12px;cursor:pointer;font-weight:600}
+.chip:hover{border-color:var(--accent)}
+.chip .pct{font-family:var(--mono);opacity:.7;margin-left:4px;font-size:10.5px}
+
+.kv{display:grid;grid-template-columns:minmax(92px,auto) 1fr auto;gap:8px 12px;align-items:center;font-size:13.5px}
+.kv .k{color:var(--fg-dim);font-size:12px;font-weight:700}
+.kv .v{font-family:var(--mono);word-break:break-all;min-width:0}
+.kv .v.big{font-size:16px;font-weight:700;letter-spacing:.01em}
+.kv hr{grid-column:1/-1;border:0;border-top:1px solid var(--line);margin:2px 0;width:100%}
+.frag{font-family:var(--mono);font-size:11.5px;color:var(--fg-dim);word-break:break-all}
+.note{border-left:3px solid var(--warn);background:var(--warn-soft);color:var(--fg);padding:9px 12px;border-radius:0 7px 7px 0;font-size:12.5px;margin-bottom:12px}
+.note b{color:var(--warn)}
+.status{font-size:12.5px;color:var(--fg-dim);min-height:1.4em;font-family:var(--mono)}
+.status.err{color:var(--bad)}
+.status.ok{color:var(--good)}
+
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:620px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--surface-2);font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--fg-dim);position:sticky;top:0}
+tbody tr:last-child td{border-bottom:0}
+td.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums}
+.pill.g{background:var(--accent-soft);color:var(--good)}
+.pill.w{background:var(--warn-soft);color:var(--warn)}
+.pill.b{background:rgba(156,47,47,.14);color:var(--bad)}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:12px}
+.kpi .v{font-size:24px;font-weight:700;font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.kpi .l{font-size:11.5px;color:var(--fg-dim);font-weight:600;margin-top:2px}
+.empty{color:var(--fg-dim);font-size:13px;text-align:center;padding:26px 10px;border:1px dashed var(--line);border-radius:8px}
+footer{max-width:960px;margin:22px auto 0;font-size:11.5px;color:var(--fg-dim);line-height:1.7}
+@media (prefers-reduced-motion:no-preference){.card{transition:border-color .15s}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1>설비 명판 인식기</h1>
+    <span class="sub">원근보정 · 전처리 · OCR · 사전보정 · 정확도 측정</span>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="work">인식 작업</button>
+    <button role="tab" aria-selected="false" data-tab="list">수집 목록</button>
+    <button role="tab" aria-selected="false" data-tab="eval">정확도 테스트</button>
+    <button role="tab" aria-selected="false" data-tab="dict">설비 사전</button>
+    <button role="tab" aria-selected="false" data-tab="conf">엔진 설정</button>
+  </nav>
+</header>
+
+<main>
+
+<!-- ============ 인식 작업 ============ -->
+<section id="tab-work">
+
+  <div class="card">
+    <h2><span class="step">1</span> 명판 사진</h2>
+    <p class="hint">명판이 화면의 절반 이상을 채우도록 가까이 찍는 것이 가장 큰 차이를 만듭니다. 사진을 이 영역에 끌어다 놓거나 <b>Ctrl+V</b>로 붙여넣어도 됩니다.</p>
+    <div class="row">
+      <input type="file" id="fileIn" accept="image/*,.heic,.heif" class="offscreen">
+      <input type="file" id="camIn" accept="image/*" capture="environment" class="offscreen">
+      <button class="btn primary" id="btnPick">사진 불러오기</button>
+      <button class="btn" id="btnCam">카메라로 촬영</button>
+      <button class="btn sm" id="btnRot" disabled>90° 회전</button>
+    </div>
+    <div class="drop" id="drop">사진을 여기에 끌어다 놓기</div>
+    <p class="status" id="imgInfo"></p>
+  </div>
+
+  <div class="card">
+    <h2><span class="step">1b</span> 라이브 촬영</h2>
+    <p class="hint">명판을 조준 틀에 맞춰 들고 있으면, 흔들림이 멎는 순간 <b>자동으로 여러 장을 연사</b>합니다. 각 장을 따로 읽어 교차 대조하므로 한 장에서 반사로 가린 글자를 다른 장이 메웁니다.</p>
+    <div class="row" style="margin-bottom:10px">
+      <button class="btn primary" id="btnCamStart">카메라 켜기</button>
+      <button class="btn" id="btnShot" disabled>지금 촬영</button>
+      <button class="btn sm" id="btnCamStop" disabled>끄기</button>
+      <label class="fld" style="width:110px"><span>연사 장수</span>
+        <select id="camN"><option>3</option><option selected>4</option><option>6</option></select></label>
+      <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="camAuto" checked style="accent-color:var(--accent);width:16px;height:16px"> 자동 연사</label>
+    </div>
+    <div class="camwrap" id="camWrap" hidden>
+      <video id="cam" playsinline muted></video>
+      <canvas id="camOv" class="camov"></canvas>
+    </div>
+    <div class="meters" id="camMeters" hidden>
+      <div class="meter"><div class="l">선명도</div><div class="b"><i id="mSharpBar" style="width:0%"></i></div><div class="v" id="mSharpV">—</div></div>
+      <div class="meter"><div class="l">흔들림</div><div class="b"><i id="mMoveBar" style="width:0%"></i></div><div class="v" id="mMoveV">—</div></div>
+    </div>
+    <div class="shots" id="shots"></div>
+    <p class="status" id="camStatus"></p>
+  </div>
+
+  <div class="card" id="cardCrop" hidden>
+    <h2><span class="step">2</span> 명판 영역 지정</h2>
+    <p class="hint">명판의 <b>네 모서리</b>를 끌어서 맞추세요. 비스듬히 찍힌 명판을 정면으로 펴주기 때문에, 이 한 단계가 인식률을 가장 크게 끌어올립니다.</p>
+    <div class="stage" id="stage">
+      <canvas id="viewCv"></canvas>
+      <canvas id="ovCv" class="ov"></canvas>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn sm" id="btnResetPts">모서리 초기화</button>
+      <button class="btn sm" id="btnFullPts">사진 전체 사용</button>
+      <span class="status" id="cropInfo"></span>
+    </div>
+  </div>
+
+  <div class="card" id="cardPrep" hidden>
+    <h2><span class="step">3</span> 전처리</h2>
+    <p class="hint">금속 명판은 반사와 저대비가 문제입니다. 아래 미리보기에서 <b>사람 눈에 또렷하게</b> 보이면 OCR도 읽습니다. 안 보이면 다시 찍는 쪽이 빠릅니다.</p>
+    <div class="grid2" style="margin-bottom:12px">
+      <div class="slider"><span>확대</span><input type="range" id="sScale" min="1" max="4" step="0.5" value="2"><output id="oScale">2.0×</output></div>
+      <div class="slider"><span>대비</span><input type="range" id="sContrast" min="-60" max="120" step="5" value="35"><output id="oContrast">35</output></div>
+      <div class="slider"><span>밝기</span><input type="range" id="sBright" min="-80" max="80" step="5" value="0"><output id="oBright">0</output></div>
+      <div class="slider"><span>선명도</span><input type="range" id="sSharp" min="0" max="100" step="5" value="40"><output id="oSharp">40</output></div>
+      <div class="slider"><span>이진화 감도</span><input type="range" id="sThr" min="-20" max="30" step="1" value="8"><output id="oThr">8</output></div>
+    </div>
+    <div class="toggles" style="margin-bottom:12px">
+      <label><input type="checkbox" id="cGray" checked> 흑백 변환</label>
+      <label><input type="checkbox" id="cThr"> 적응형 이진화 (각인·저대비 명판에 효과)</label>
+      <label><input type="checkbox" id="cInv"> 반전 (어두운 바탕 흰 글자)</label>
+    </div>
+    <div class="toggles" style="margin-bottom:12px">
+      <label><input type="checkbox" id="cClean" checked> 테두리·볼트구멍 제거</label>
+      <label><input type="checkbox" id="cLines" checked> 줄 단위로 끊어서 인식</label>
+    </div>
+    <div class="preview" style="text-align:center"><div class="cvstack"><canvas id="outCv"></canvas><canvas id="lineOv"></canvas></div></div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="btnDetect">글자 영역 정리 · 줄 찾기</button>
+      <button class="btn sm" id="btnPreset1">금속 각인 프리셋</button>
+      <button class="btn sm" id="btnPreset2">인쇄 라벨 프리셋</button>
+      <button class="btn sm" id="btnPreset0">보정 끄기</button>
+      <span class="status" id="prepInfo"></span>
+    </div>
+  </div>
+
+  <div class="card" id="cardOcr" hidden>
+    <h2><span class="step">4</span> 문자 인식</h2>
+    <div class="row" style="margin-bottom:10px">
+      <label class="fld" style="flex:1;min-width:200px">
+        <span>인식 엔진</span>
+        <select id="engineSel">
+          <option value="local">기기 내 인식 (Tesseract) — 키 불필요, 사진이 밖으로 나가지 않음</option>
+          <option value="gemini">Gemini Vision — 명판처럼 서식이 제각각일 때 가장 유리</option>
+          <option value="clova">CLOVA OCR — 한국어 인쇄체 최상위</option>
+          <option value="gvision">Google Cloud Vision — 영문·숫자 혼재에 안정적</option>
+        </select>
+      </label>
+      <button class="btn primary" id="btnOcr" style="align-self:flex-end">인식 실행</button>
+    </div>
+    <p class="status" id="ocrStatus"></p>
+    <pre class="raw" id="rawOut" hidden></pre>
+  </div>
+
+  <div class="card" id="cardKc" hidden>
+    <h2><span class="step">4b</span> KC 라벨 자동 해석</h2>
+    <p class="hint">전파인증 라벨은 <b>상호명 · 기자재의 명칭(모델명) · 인증번호</b>가 고정 문구로 들어갑니다. 한글 문구를 닻으로 삼아 값을 끊어내고, 흩어진 모델코드 토막들을 자리별 다수결로 맞춰 복원합니다.</p>
+    <div id="kcHost"></div>
+  </div>
+
+  <div class="card" id="cardFields" hidden>
+    <h2><span class="step">5</span> 항목 확정</h2>
+    <p class="hint">회색 칸은 자동 추출값, 아래 알약은 사전에서 찾은 보정 후보입니다. 눌러서 바꾸고, 틀린 곳은 직접 고친 뒤 저장하세요.</p>
+    <div class="grid2">
+      <div>
+        <label class="fld"><span>설비명</span><input id="fName" placeholder="예: 교류무정전전원장치"></label>
+        <div class="chips" id="chName"></div>
+      </div>
+      <div>
+        <label class="fld"><span>제조사</span><input id="fMaker" placeholder="예: 인터엠"></label>
+        <div class="chips" id="chMaker"></div>
+      </div>
+      <label class="fld"><span>모델명</span><input id="fModel" placeholder="예: PX-1200"></label>
+      <label class="fld"><span>용량 / 정격</span><input id="fSpec" placeholder="예: 10kVA, 220V, 100Ah"></label>
+      <label class="fld"><span>제조일자</span><input id="fDate" placeholder="예: 2019.07"></label>
+      <label class="fld"><span>제조번호 (S/N)</span><input id="fSn" placeholder="예: SN-20A3391"></label>
+      <label class="fld"><span>KC 인증번호</span><input id="fCert" placeholder="예: R-R-LGE-24MK600M"></label>
+      <label class="fld"><span>설치 위치</span><input id="fLoc" placeholder="예: 본관 B1 방재실"></label>
+      <label class="fld"><span>수량</span><input id="fQty" type="number" min="1" value="1"></label>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn primary" id="btnSave">목록에 저장</button>
+      <button class="btn" id="btnClear">입력 비우기</button>
+      <span class="status" id="saveStatus"></span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 목록 ============ -->
+<section id="tab-list" hidden>
+  <div class="card">
+    <h2>수집 목록</h2>
+    <div class="row" style="margin-bottom:12px">
+      <button class="btn sm" id="btnCsv">CSV 내보내기</button>
+      <button class="btn sm" id="btnJson">점검앱 JSON 내보내기</button>
+      <button class="btn sm ghost" id="btnWipe">전체 삭제</button>
+      <span class="status" id="listStatus"></span>
+    </div>
+    <div id="listHost"></div>
+  </div>
+</section>
+
+<!-- ============ 정확도 테스트 ============ -->
+<section id="tab-eval" hidden>
+  <div class="card">
+    <h2>정확도 테스트</h2>
+    <p class="hint">같은 사진 20~30장을 고정 테스트셋으로 돌리고, 각 건의 <b>정답</b>을 적어 두면 엔진·전처리 조합별 실제 인식률이 숫자로 남습니다. 아래 리포트를 그대로 AI에게 주면 추측 대신 수정이 시작됩니다.</p>
+    <div class="kpis" id="kpis"></div>
+    <div class="row" style="margin-bottom:12px">
+      <button class="btn sm" id="btnReport">실패 리포트 내보내기 (.md)</button>
+      <span class="status" id="evalStatus"></span>
+    </div>
+    <div id="evalHost"></div>
+  </div>
+</section>
+
+<!-- ============ 사전 ============ -->
+<section id="tab-dict" hidden>
+  <div class="card">
+    <h2>설비 사전</h2>
+    <p class="hint">OCR이 한두 글자를 틀려도 이 목록과 대조해 되살립니다. 현장에서 실제로 나오는 표기로 계속 채워 넣을수록 정확해집니다. 한 줄에 하나씩 적으세요.</p>
+    <div class="grid2">
+      <label class="fld"><span>설비명 (34종 점검대상 + 현장 표기)</span><textarea id="dName" rows="16"></textarea></label>
+      <label class="fld"><span>제조사</span><textarea id="dMaker" rows="16"></textarea></label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn primary" id="btnDictSave">사전 저장</button>
+      <button class="btn sm" id="btnDictReset">기본값으로 되돌리기</button>
+      <span class="status" id="dictStatus"></span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 설정 ============ -->
+<section id="tab-conf" hidden>
+  <div class="card">
+    <h2>엔진 설정</h2>
+    <div class="note"><b>브라우저에서 직접 호출합니다.</b> 키는 이 기기의 localStorage에만 저장되고 외부로 나가지 않습니다. 다만 파일을 더블클릭해 여는 <code>file://</code> 상태에서는 CORS 때문에 호출이 막힐 수 있습니다. GitHub Pages에 올리거나 <code>python -m http.server</code>로 띄워서 쓰세요.</div>
+
+    <h3 style="font-size:14px;margin:16px 0 8px">기기 내 인식 (Tesseract)</h3>
+    <p class="hint">키가 필요 없고 사진이 기기 밖으로 나가지 않습니다. 처음 실행할 때 한국어 학습데이터(약 15MB)를 한 번 내려받고, 이후에는 캐시로 동작합니다. 깨끗한 인쇄 라벨에는 쓸 만하지만 금속 각인·반사 명판에서는 아래 클라우드 엔진과 차이가 큽니다. 전처리를 충분히 걸어서 쓰세요.</p>
+
+    <h3 style="font-size:14px;margin:18px 0 8px">Gemini Vision</h3>
+    <p class="hint">명판처럼 서식이 정해지지 않은 대상에는 전통 OCR보다 유리합니다. 계통도 앱에서 쓰시던 방식과 같습니다.</p>
+    <div class="grid2">
+      <label class="fld"><span>API Key</span><input type="password" id="kGemini" placeholder="AIza..."></label>
+      <label class="fld"><span>모델명</span><input id="mGemini" placeholder="gemini-3.8-flash"></label>
+    </div>
+
+    <h3 style="font-size:14px;margin:18px 0 8px">CLOVA OCR (General)</h3>
+    <p class="hint">네이버 클라우드 콘솔에서 General OCR 도메인을 만들고 APIGW Invoke URL과 Secret Key를 복사하세요.</p>
+    <div class="grid2">
+      <label class="fld"><span>APIGW Invoke URL</span><input id="kClovaUrl" placeholder="https://....apigw.ntruss.com/custom/v1/.../general"></label>
+      <label class="fld"><span>Secret Key</span><input type="password" id="kClovaSec" placeholder="X-OCR-SECRET"></label>
+    </div>
+
+    <h3 style="font-size:14px;margin:18px 0 8px">Google Cloud Vision</h3>
+    <div class="grid2">
+      <label class="fld"><span>API Key</span><input type="password" id="kGv" placeholder="AIza..."></label>
+    </div>
+
+    <div class="row" style="margin-top:16px">
+      <button class="btn primary" id="btnConfSave">설정 저장</button>
+      <span class="status" id="confStatus"></span>
+    </div>
+  </div>
+</section>
+
+<footer>
+  단일 HTML 파일 · 데이터는 브라우저 localStorage(<code>ictocr</code>)에만 저장됩니다 · 사진은 선택한 OCR 엔진에만 전송됩니다.
+</footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script>
+(function(){
+"use strict";
+const $ = s => document.querySelector(s);
+const LS = 'ictocr';
+
+/* ---------- 기본 사전 ---------- */
+const DEF_NAME = `교환설비
+구내교환설비
+전송설비
+광단말장치
+구내통신선로설비
+이동통신구내선로설비
+방송공동수신설비
+위성방송수신설비
+증폭기
+분배기
+혼합기
+영상정보처리기기
+네트워크 비디오 레코더
+디지털 비디오 레코더
+주차관제설비
+출입통제설비
+비상방송설비
+전관방송설비
+앰프
+스피커
+인터폰설비
+홈네트워크설비
+세대단말기
+월패드
+원격검침설비
+무선통신보조설비
+교류무정전전원장치
+직류전원장치
+정류기
+축전지
+발전기
+접지설비
+피뢰설비
+통신용 배전반
+주배선반
+중간배선반
+광분배함
+광접속함체
+통신용 랙
+네트워크 스위치
+라우터
+방화벽
+무선접속장치
+서버
+구내방송장치
+자동화재탐지설비 연동장치`;
+
+const DEF_MAKER = `삼성전자
+LG전자
+에스원
+한화비전
+아이디스
+IDIS
+다산네트웍스
+유비쿼스
+코맥스
+현대통신
+서울통신기술
+경동원
+인터엠
+Inter-M
+TOA
+보이스텍
+LS일렉트릭
+현대일렉트릭
+효성중공업
+비츠로이엠
+동아전기공업
+세방전지
+로케트전기
+아트라스비엑스
+델타전자
+Eaton
+APC
+산전
+한국전자
+대한전선
+LS전선
+넥상스코리아
+유비쿼시스
+쌍용정보통신
+지멘스
+파나소닉`;
+
+/* ---------- 상태 ---------- */
+let store = { items:[], dict:{name:DEF_NAME, maker:DEF_MAKER}, conf:{}, lastPrep:null };
+try{ const raw=localStorage.getItem(LS); if(raw) store = Object.assign(store, JSON.parse(raw)); }catch(e){}
+/* 지난 버전에 저장된 구형 모델명은 비워서 현재 기본값이 적용되게 한다 */
+if(store.conf && /^gemini-(1|2)\./.test(store.conf.geminiModel||'')) delete store.conf.geminiModel;
+function persist(){ try{ localStorage.setItem(LS, JSON.stringify(store)); }catch(e){ setStatus('#listStatus','저장 공간이 가득 찼습니다. 목록을 내보낸 뒤 삭제하세요.','err'); } }
+function setStatus(sel,msg,cls){ const el=$(sel); if(!el) return; el.textContent=msg||''; el.className='status'+(cls?' '+cls:''); }
+
+/* ---------- 탭 ---------- */
+document.querySelectorAll('.tabs button').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-selected', x===b ? 'true':'false'));
+    ['work','list','eval','dict','conf'].forEach(t=>{ $('#tab-'+t).hidden = (t!==b.dataset.tab); });
+    if(b.dataset.tab==='list') renderList();
+    if(b.dataset.tab==='eval') renderEval();
+  });
+});
+
+/* ---------- 이미지 로드 ---------- */
+const baseCv = document.createElement('canvas');   // 회전 반영된 원본
+const viewCv = $('#viewCv'), ovCv = $('#ovCv'), outCv = $('#outCv');
+let srcImg=null, rot=0, pts=null, dragIdx=-1;
+const MAXSIDE = 2400;
+
+$('#btnPick').addEventListener('click',()=>$('#fileIn').click());
+$('#btnCam').addEventListener('click',()=>$('#camIn').click());
+['fileIn','camIn'].forEach(id=>$('#'+id).addEventListener('change', e=>{
+  const f=e.target.files && e.target.files[0];
+  e.target.value='';                       // 같은 파일 재선택 허용
+  if(f) loadFile(f);
+}));
+
+function loadFile(f){
+  if(!f.type.startsWith('image/') && !/\.(heic|heif)$/i.test(f.name)){
+    setStatus('#imgInfo','이미지 파일이 아닙니다.','err'); return;
+  }
+  setStatus('#imgInfo','불러오는 중…');
+  const url=URL.createObjectURL(f);
+  const img=new Image();
+  img.onload=()=>{
+    URL.revokeObjectURL(url);
+    srcImg=img; rot=0; buildBase(); $('#btnRot').disabled=false;
+    setStatus('#imgInfo', `${f.name} · ${img.naturalWidth}×${img.naturalHeight}px`, 'ok');
+    ['#cardCrop','#cardPrep','#cardOcr'].forEach(s=>$(s).hidden=false);
+    $('#cardFields').hidden=true; $('#rawOut').hidden=true; setStatus('#ocrStatus','');
+    $('#cardCrop').scrollIntoView({behavior:'smooth',block:'start'});
+  };
+  img.onerror=()=>{
+    URL.revokeObjectURL(url);
+    const heic=/\.(heic|heif)$/i.test(f.name);
+    setStatus('#imgInfo', heic
+      ? 'HEIC 파일은 브라우저가 열지 못합니다. 아이폰 설정 > 카메라 > 포맷을 "높은 호환성"으로 바꾸거나 JPG로 변환해 주세요.'
+      : '이미지를 열 수 없습니다. 다른 파일을 선택하세요.','err');
+  };
+  img.src=url;
+}
+
+/* 끌어다 놓기 · 붙여넣기 */
+const dropEl=$('#drop');
+['dragenter','dragover'].forEach(t=>dropEl.addEventListener(t,e=>{e.preventDefault();dropEl.classList.add('over');}));
+['dragleave','drop'].forEach(t=>dropEl.addEventListener(t,e=>{e.preventDefault();dropEl.classList.remove('over');}));
+dropEl.addEventListener('drop',e=>{ const f=e.dataTransfer?.files?.[0]; if(f) loadFile(f); });
+document.addEventListener('paste',e=>{
+  const it=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'));
+  if(it){ const f=it.getAsFile(); if(f) loadFile(f); }
+});
+$('#btnRot').addEventListener('click',()=>{ rot=(rot+90)%360; buildBase(); });
+
+function buildBase(){
+  let w=srcImg.naturalWidth, h=srcImg.naturalHeight;
+  const sc = Math.min(1, MAXSIDE/Math.max(w,h));
+  w=Math.round(w*sc); h=Math.round(h*sc);
+  const swap = (rot===90||rot===270);
+  baseCv.width = swap?h:w; baseCv.height = swap?w:h;
+  const g=baseCv.getContext('2d');
+  g.save(); g.translate(baseCv.width/2, baseCv.height/2); g.rotate(rot*Math.PI/180);
+  g.drawImage(srcImg, -w/2, -h/2, w, h); g.restore();
+  // 뷰 캔버스
+  const vw = Math.min(900, baseCv.width);
+  viewCv.width = vw; viewCv.height = Math.round(baseCv.height * vw / baseCv.width);
+  viewCv.getContext('2d').drawImage(baseCv,0,0,viewCv.width,viewCv.height);
+  ovCv.width=viewCv.width; ovCv.height=viewCv.height;
+  resetPts();
+}
+function resetPts(){
+  const w=viewCv.width,h=viewCv.height, mx=w*0.12, my=h*0.18;
+  pts=[[mx,my],[w-mx,my],[w-mx,h-my],[mx,h-my]];
+  drawOv(); schedulePrep();
+}
+function fullPts(){ const w=viewCv.width,h=viewCv.height; pts=[[1,1],[w-1,1],[w-1,h-1],[1,h-1]]; drawOv(); schedulePrep(); }
+$('#btnResetPts').addEventListener('click',resetPts);
+$('#btnFullPts').addEventListener('click',fullPts);
+
+function drawOv(){
+  const g=ovCv.getContext('2d'); g.clearRect(0,0,ovCv.width,ovCv.height);
+  const css = getComputedStyle(document.documentElement);
+  const ac = css.getPropertyValue('--accent').trim() || '#2f6f4e';
+  g.save();
+  g.fillStyle='rgba(0,0,0,.42)'; g.fillRect(0,0,ovCv.width,ovCv.height);
+  g.globalCompositeOperation='destination-out';
+  g.beginPath(); g.moveTo(pts[0][0],pts[0][1]); for(let i=1;i<4;i++) g.lineTo(pts[i][0],pts[i][1]); g.closePath(); g.fill();
+  g.globalCompositeOperation='source-over';
+  g.strokeStyle=ac; g.lineWidth=2;
+  g.beginPath(); g.moveTo(pts[0][0],pts[0][1]); for(let i=1;i<4;i++) g.lineTo(pts[i][0],pts[i][1]); g.closePath(); g.stroke();
+  pts.forEach((p,i)=>{ g.beginPath(); g.arc(p[0],p[1],11,0,Math.PI*2); g.fillStyle=ac; g.fill();
+    g.fillStyle='#fff'; g.font='bold 11px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText(String(i+1),p[0],p[1]); });
+  g.restore();
+  $('#cropInfo').textContent = `보정 결과 ${outCv.width||0}×${outCv.height||0}px`;
+}
+function evPos(e){ const r=ovCv.getBoundingClientRect(); const s=ovCv.width/r.width;
+  return [ (e.clientX-r.left)*s, (e.clientY-r.top)*s ]; }
+ovCv.addEventListener('pointerdown',e=>{
+  if(!pts) return; const [x,y]=evPos(e); let best=-1,bd=1e9;
+  pts.forEach((p,i)=>{ const d=Math.hypot(p[0]-x,p[1]-y); if(d<bd){bd=d;best=i;} });
+  if(bd < 44){ dragIdx=best; ovCv.setPointerCapture(e.pointerId); e.preventDefault(); }
+});
+ovCv.addEventListener('pointermove',e=>{
+  if(dragIdx<0) return; const [x,y]=evPos(e);
+  pts[dragIdx]=[Math.max(0,Math.min(ovCv.width,x)), Math.max(0,Math.min(ovCv.height,y))];
+  drawOv(); e.preventDefault();
+});
+['pointerup','pointercancel'].forEach(t=>ovCv.addEventListener(t,()=>{ if(dragIdx>=0){dragIdx=-1; schedulePrep();} }));
+
+/* ---------- 호모그래피 (직사각형 → 사진 좌표) ---------- */
+function solve(A,b){
+  const n=b.length;
+  for(let i=0;i<n;i++){
+    let p=i; for(let r=i+1;r<n;r++) if(Math.abs(A[r][i])>Math.abs(A[p][i])) p=r;
+    [A[i],A[p]]=[A[p],A[i]]; [b[i],b[p]]=[b[p],b[i]];
+    const d=A[i][i]||1e-12;
+    for(let r=i+1;r<n;r++){ const f=A[r][i]/d; for(let c=i;c<n;c++) A[r][c]-=f*A[i][c]; b[r]-=f*b[i]; }
+  }
+  const x=new Array(n).fill(0);
+  for(let i=n-1;i>=0;i--){ let s=b[i]; for(let c=i+1;c<n;c++) s-=A[i][c]*x[c]; x[i]=s/(A[i][i]||1e-12); }
+  return x;
+}
+function homography(src,dst){ // src: 사각형 4점 → dst: 사진 4점
+  const A=[],b=[];
+  for(let i=0;i<4;i++){
+    const [x,y]=src[i], [u,v]=dst[i];
+    A.push([x,y,1,0,0,0,-u*x,-u*y]); b.push(u);
+    A.push([0,0,0,x,y,1,-v*x,-v*y]); b.push(v);
+  }
+  const h=solve(A,b); h.push(1); return h;
+}
+
+/* ---------- 전처리 ---------- */
+let prepTimer=null;
+function schedulePrep(){ clearTimeout(prepTimer); prepTimer=setTimeout(runPrep,110); }
+['sScale','sContrast','sBright','sSharp','sThr'].forEach(id=>{
+  const el=$('#'+id); el.addEventListener('input',()=>{ syncOut(); schedulePrep(); });
+});
+['cGray','cThr','cInv'].forEach(id=>$('#'+id).addEventListener('change',schedulePrep));
+function syncOut(){
+  $('#oScale').textContent = Number($('#sScale').value).toFixed(1)+'×';
+  $('#oContrast').textContent = $('#sContrast').value;
+  $('#oBright').textContent = $('#sBright').value;
+  $('#oSharp').textContent = $('#sSharp').value;
+  $('#oThr').textContent = $('#sThr').value;
+}
+$('#btnPreset1').addEventListener('click',()=>{ setPrep(3,55,10,70,true,true,10); });
+$('#btnPreset2').addEventListener('click',()=>{ setPrep(2,30,0,35,true,false,8); });
+$('#btnPreset0').addEventListener('click',()=>{ setPrep(2,0,0,0,false,false,8); });
+function setPrep(sc,ct,br,sh,gray,thr,tv){
+  $('#sScale').value=sc; $('#sContrast').value=ct; $('#sBright').value=br; $('#sSharp').value=sh;
+  $('#cGray').checked=gray; $('#cThr').checked=thr; $('#sThr').value=tv;
+  syncOut(); schedulePrep();
+}
+
+function runPrep(){
+  if(!pts || !baseCv.width) return;
+  const k = baseCv.width / viewCv.width;               // 뷰 → 원본 배율
+  const P = pts.map(p=>[p[0]*k, p[1]*k]);
+  const dist=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
+  let W = (dist(P[0],P[1])+dist(P[3],P[2]))/2;
+  let H = (dist(P[0],P[3])+dist(P[1],P[2]))/2;
+  const scale = parseFloat($('#sScale').value);
+  W = Math.max(32, Math.round(W*scale)); H = Math.max(32, Math.round(H*scale));
+  const cap = 2600; const f = Math.min(1, cap/Math.max(W,H)); W=Math.round(W*f); H=Math.round(H*f);
+
+  const h = homography([[0,0],[W,0],[W,H],[0,H]], P);
+  const sg = baseCv.getContext('2d', {willReadFrequently:true});
+  const sd = sg.getImageData(0,0,baseCv.width,baseCv.height);
+  outCv.width=W; outCv.height=H;
+  const og = outCv.getContext('2d', {willReadFrequently:true});
+  const od = og.createImageData(W,H);
+  const SW=baseCv.width, SH=baseCv.height;
+
+  for(let y=0;y<H;y++){
+    for(let x=0;x<W;x++){
+      const den = h[6]*x + h[7]*y + h[8];
+      const u = (h[0]*x + h[1]*y + h[2]) / den;
+      const v = (h[3]*x + h[4]*y + h[5]) / den;
+      const o = (y*W+x)*4;
+      if(u<0||v<0||u>=SW-1||v>=SH-1){ od.data[o]=od.data[o+1]=od.data[o+2]=255; od.data[o+3]=255; continue; }
+      const x0=u|0, y0=v|0, fx=u-x0, fy=v-y0;
+      const i00=(y0*SW+x0)*4, i10=i00+4, i01=i00+SW*4, i11=i01+4;
+      for(let c=0;c<3;c++){
+        const a=sd.data[i00+c]*(1-fx)+sd.data[i10+c]*fx;
+        const b2=sd.data[i01+c]*(1-fx)+sd.data[i11+c]*fx;
+        od.data[o+c]=a*(1-fy)+b2*fy;
+      }
+      od.data[o+3]=255;
+    }
+  }
+
+  // 흑백 / 대비 / 밝기
+  const gray=$('#cGray').checked, ct=+$('#sContrast').value, br=+$('#sBright').value, inv=$('#cInv').checked;
+  const cf = (259*(ct+255))/(255*(259-ct));
+  for(let i=0;i<od.data.length;i+=4){
+    let r=od.data[i],g2=od.data[i+1],b3=od.data[i+2];
+    if(gray){ const l=0.299*r+0.587*g2+0.114*b3; r=g2=b3=l; }
+    r=cf*(r-128)+128+br; g2=cf*(g2-128)+128+br; b3=cf*(b3-128)+128+br;
+    if(inv){ r=255-r; g2=255-g2; b3=255-b3; }
+    od.data[i]=r<0?0:r>255?255:r; od.data[i+1]=g2<0?0:g2>255?255:g2; od.data[i+2]=b3<0?0:b3>255?255:b3;
+  }
+
+  // 선명도 (언샤프 커널)
+  const sh=+$('#sSharp').value/100;
+  if(sh>0){
+    const src=new Uint8ClampedArray(od.data);
+    const K=[0,-1,0,-1,5,-1,0,-1,0];
+    for(let y=1;y<H-1;y++) for(let x=1;x<W-1;x++){
+      const o=(y*W+x)*4;
+      for(let c=0;c<3;c++){
+        let s=0,ki=0;
+        for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++) s+=src[((y+dy)*W+(x+dx))*4+c]*K[ki++];
+        od.data[o+c]=src[o+c]*(1-sh)+s*sh;
+      }
+    }
+  }
+
+  // 적응형 이진화 (적분영상 기반)
+  if($('#cThr').checked){
+    const g3=new Float64Array(W*H);
+    for(let i=0,p=0;i<od.data.length;i+=4,p++) g3[p]=0.299*od.data[i]+0.587*od.data[i+1]+0.114*od.data[i+2];
+    const I=new Float64Array((W+1)*(H+1));
+    for(let y=0;y<H;y++){ let rs=0; for(let x=0;x<W;x++){ rs+=g3[y*W+x]; I[(y+1)*(W+1)+(x+1)] = I[y*(W+1)+(x+1)] + rs; } }
+    const win=Math.max(15, (Math.min(W,H)/14)|0), C=+$('#sThr').value;
+    for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+      const x0=Math.max(0,x-win), y0=Math.max(0,y-win), x1=Math.min(W-1,x+win), y1=Math.min(H-1,y+win);
+      const n=(x1-x0+1)*(y1-y0+1);
+      const s = I[(y1+1)*(W+1)+(x1+1)] - I[y0*(W+1)+(x1+1)] - I[(y1+1)*(W+1)+x0] + I[y0*(W+1)+x0];
+      const val = g3[y*W+x] > (s/n - C) ? 255 : 0;
+      const o=(y*W+x)*4; od.data[o]=od.data[o+1]=od.data[o+2]=val;
+    }
+  }
+
+  og.putImageData(od,0,0);
+  rawCv.width=W; rawCv.height=H;                 // 정리 전 원본을 따로 보관
+  rawCv.getContext('2d').drawImage(outCv,0,0);
+  lineBoxes=[]; clearLineOv(); prepDirty=true;
+  drawOv();
+  $('#prepInfo').textContent = `${W}×${H}px 전송 예정`;
+}
+
+/* ===== 글자 영역 검출 ===== */
+const rawCv = document.createElement('canvas');
+const lineOv = $('#lineOv');
+let lineBoxes=[], prepDirty=true;
+
+function clearLineOv(){
+  lineOv.width = outCv.width||1; lineOv.height = outCv.height||1;
+  lineOv.getContext('2d').clearRect(0,0,lineOv.width,lineOv.height);
+}
+function drawLineOv(){
+  lineOv.width=outCv.width; lineOv.height=outCv.height;
+  const g=lineOv.getContext('2d');
+  const ac=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#2f6f4e';
+  g.clearRect(0,0,lineOv.width,lineOv.height);
+  g.strokeStyle=ac; g.lineWidth=Math.max(2, outCv.width/500);
+  g.font=`bold ${Math.max(12,outCv.width/70)}px sans-serif`; g.fillStyle=ac; g.textBaseline='bottom';
+  lineBoxes.forEach((b,i)=>{
+    g.strokeRect(b.x0,b.y0,b.x1-b.x0,b.y1-b.y0);
+    g.fillText(String(i+1), b.x0+2, b.y0-2);
+  });
+}
+
+/* 테두리·볼트구멍처럼 글자가 아닌 큰 덩어리를 지우고, 남은 잉크로 줄을 찾는다 */
+function detect(){
+  if(!rawCv.width) return 0;
+  const W=rawCv.width, H=rawCv.height, N=W*H;
+  const g=rawCv.getContext('2d',{willReadFrequently:true});
+  const d=g.getImageData(0,0,W,H);
+  const px=d.data;
+
+  let sum=0; const lum=new Uint8Array(N);
+  for(let i=0,p=0;i<px.length;i+=4,p++){ const l=(px[i]*299+px[i+1]*587+px[i+2]*114)/1000; lum[p]=l; sum+=l; }
+  const mean=sum/N, thr=Math.min(205, Math.max(55, mean*0.82));
+  const ink=new Uint8Array(N); let cnt=0;
+  for(let p=0;p<N;p++) if(lum[p]<thr){ ink[p]=1; cnt++; }
+  if(cnt > N*0.6){ for(let p=0;p<N;p++) ink[p]^=1; }    // 글자가 밝은 경우 뒤집기
+
+  const doClean = $('#cClean').checked;
+  if(doClean){
+    const lab=new Int32Array(N), stack=new Int32Array(N);
+    const bad=new Set(), keep=[]; let L=0;
+    for(let p0=0;p0<N;p0++){
+      if(!ink[p0]||lab[p0]) continue;
+      L++; let sp=0; stack[sp++]=p0; lab[p0]=L;
+      let minx=W,maxx=0,miny=H,maxy=0,area=0;
+      while(sp){
+        const q=stack[--sp], x=q%W, y=(q/W)|0;
+        area++; if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y;
+        if(x>0   && ink[q-1] && !lab[q-1]){ lab[q-1]=L; stack[sp++]=q-1; }
+        if(x<W-1 && ink[q+1] && !lab[q+1]){ lab[q+1]=L; stack[sp++]=q+1; }
+        if(y>0   && ink[q-W] && !lab[q-W]){ lab[q-W]=L; stack[sp++]=q-W; }
+        if(y<H-1 && ink[q+W] && !lab[q+W]){ lab[q+W]=L; stack[sp++]=q+W; }
+      }
+      const w=maxx-minx+1, h=maxy-miny+1, fill=area/(w*h);
+      if(h>H*0.45 || w>W*0.85 || area>N*0.035 || area<6 || (fill>0.9 && Math.min(w,h)>24)) bad.add(L);
+      else keep.push({L,w,h,area,fill});
+    }
+    /* 살아남은 덩어리의 면적 가중 중앙 높이 = 이 사진의 글자 크기.
+       작은 얼룩이 수백 개여도 면적이 작아 중앙값을 끌어내리지 못한다. */
+    if(keep.length){
+      keep.sort((a,b)=>a.h-b.h);
+      const tot=keep.reduce((t,c)=>t+c.area,0);
+      let acc=0, medH=keep[keep.length-1].h;
+      for(const c of keep){ acc+=c.area; if(acc>=tot*0.5){ medH=c.h; break; } }
+      keep.forEach(c=>{
+        if(c.h>medH*2.5 || (c.h>medH*1.8 && c.w>medH*1.8 && c.fill<0.3)) bad.add(c.L);  // 로고·도장
+      });
+    }
+    for(let p=0;p<N;p++) if(bad.has(lab[p])){ ink[p]=0; const i=p*4; px[i]=px[i+1]=px[i+2]=255; }
+  }
+
+  outCv.width=W; outCv.height=H;
+  outCv.getContext('2d').putImageData(d,0,0);
+
+  // 가로 투영으로 글자 줄 띠 찾기
+  lineBoxes=[];
+  if($('#cLines').checked){
+    const row=new Int32Array(H); let maxRow=0;
+    for(let y=0;y<H;y++){ let c=0; const o=y*W; for(let x=0;x<W;x++) c+=ink[o+x]; row[y]=c; if(c>maxRow) maxRow=c; }
+    const rt=Math.max(2, maxRow*0.05), gapMax=Math.max(3, H*0.012), minH=Math.max(8, H*0.012);
+    const bands=[]; let s0=-1, gap=0;
+    for(let y=0;y<H;y++){
+      if(row[y]>rt){ if(s0<0) s0=y; gap=0; }
+      else if(s0>=0){ gap++; if(gap>gapMax){ bands.push([s0,y-gap]); s0=-1; } }
+    }
+    if(s0>=0) bands.push([s0,H-1]);
+    bands.forEach(([y0,y1])=>{
+      if(y1-y0+1 < minH) return;
+      let x0=W, x1=0;
+      for(let y=y0;y<=y1;y++){ const o=y*W; for(let x=0;x<W;x++) if(ink[o+x]){ if(x<x0)x0=x; if(x>x1)x1=x; } }
+      if(x1-x0 < W*0.04) return;
+      const pad=Math.round((y1-y0)*0.18)+3;
+      lineBoxes.push({ x0:Math.max(0,x0-pad), x1:Math.min(W,x1+pad),
+                       y0:Math.max(0,y0-pad), y1:Math.min(H,y1+pad) });
+    });
+  }
+  drawLineOv(); prepDirty=false;
+  return lineBoxes.length;
+}
+
+function cropLine(b){
+  const w=b.x1-b.x0, h=b.y1-b.y0;
+  const k=Math.max(1, Math.min(3, 46/h));         // 너무 작은 줄은 키워서 보낸다
+  const c=document.createElement('canvas');
+  c.width=Math.round(w*k); c.height=Math.round(h*k);
+  const g=c.getContext('2d'); g.imageSmoothingQuality='high';
+  g.drawImage(outCv, b.x0,b.y0,w,h, 0,0,c.width,c.height);
+  return c;
+}
+
+$('#btnDetect').addEventListener('click',()=>{
+  if(!rawCv.width){ setStatus('#prepInfo','먼저 사진을 불러오세요.','err'); return; }
+  setStatus('#prepInfo','정리 중…');
+  setTimeout(()=>{
+    const n=detect();
+    setStatus('#prepInfo', $('#cLines').checked ? `${n}개 줄을 찾았습니다.` : '글자 영역을 정리했습니다.', n||!$('#cLines').checked?'ok':'err');
+  },30);
+});
+['cClean','cLines'].forEach(id=>$('#'+id).addEventListener('change',()=>{
+  if(rawCv.width){ outCv.getContext('2d').drawImage(rawCv,0,0); lineBoxes=[]; clearLineOv(); prepDirty=true; }
+}));
+
+/* ---------- OCR 호출 ---------- */
+function b64(cv){ return (cv||outCv).toDataURL('image/png').split(',')[1]; }
+
+$('#btnOcr').addEventListener('click', async ()=>{
+  const eng=$('#engineSel').value;
+  $('#btnOcr').disabled=true; setStatus('#ocrStatus','인식 중…');
+  try{
+    if(($('#cClean').checked || $('#cLines').checked) && prepDirty && rawCv.width){
+      setStatus('#ocrStatus','글자 영역 정리 중…'); await new Promise(r=>setTimeout(r,20)); detect();
+    }
+    const useLines = $('#cLines').checked && lineBoxes.length>0;
+    let text='';
+    lastStruct=null;
+    if(useLines && eng==='local'){
+      text = await ocrLocalLines(lineBoxes);
+    }else if(useLines){
+      const out=[];
+      for(let i=0;i<lineBoxes.length;i++){
+        setStatus('#ocrStatus', `줄 ${i+1}/${lineBoxes.length} 전송 중…`);
+        const t = await recognize(eng, cropLine(lineBoxes[i]));
+        if(t) out.push(t.replace(/\s+/g,' ').trim());
+      }
+      text = out.join('\n'); lastStruct=null;
+    }else{
+      text = await recognize(eng, outCv);
+    }
+    $('#rawOut').hidden=false; $('#rawOut').textContent = text || '(인식된 문자 없음)';
+    setStatus('#ocrStatus', text ? `${text.replace(/\s+/g,'').length}자 인식됨${lineBoxes.length&&$('#cLines').checked?` · ${lineBoxes.length}줄`:''}` : '문자를 찾지 못했습니다. 전처리를 바꾸거나 더 가까이 찍어보세요.', text?'ok':'err');
+    $('#cardFields').hidden=false;
+    fillFields(text);
+  }catch(err){
+    $('#rawOut').hidden=false; $('#rawOut').textContent=String(err && err.message || err);
+    setStatus('#ocrStatus','호출 실패 — 설정 탭의 키와 CORS 안내를 확인하세요.','err');
+  }finally{ $('#btnOcr').disabled=false; }
+});
+
+function needTesseract(){
+  if(typeof Tesseract==='undefined')
+    throw new Error('기기 내 인식 엔진을 불러오지 못했습니다. 인터넷에 연결된 상태로 한 번 실행하면 이후에는 캐시로 동작합니다.');
+}
+async function ocrLocal(cv){
+  needTesseract();
+  const r = await Tesseract.recognize(cv||outCv, 'kor+eng', {
+    logger: m => { if(m && m.status) setStatus('#ocrStatus', `${m.status} ${Math.round((m.progress||0)*100)}%`); }
+  });
+  return (r && r.data && r.data.text || '').replace(/[ \t]+/g,' ').trim();
+}
+/* 줄 단위는 워커를 하나 만들어 재사용하고, 한 줄 모드로 읽는다 */
+async function ocrLocalLines(boxes){
+  needTesseract();
+  const worker = await Tesseract.createWorker('kor+eng');
+  try{
+    try{ await worker.setParameters({tessedit_pageseg_mode:'7'}); }catch(e){}
+    const out=[];
+    for(let i=0;i<boxes.length;i++){
+      setStatus('#ocrStatus', `줄 ${i+1}/${boxes.length} 인식 중…`);
+      const r = await worker.recognize(cropLine(boxes[i]));
+      const t = (r && r.data && r.data.text || '').replace(/\s+/g,' ').trim();
+      if(t) out.push(t);
+    }
+    return out.join('\n');
+  } finally { try{ await worker.terminate(); }catch(e){} }
+}
+async function recognize(eng, cv){
+  if(eng==='local')  return ocrLocal(cv);
+  if(eng==='gemini') return ocrGemini(cv);
+  if(eng==='clova')  return ocrClova(cv);
+  return ocrGVision(cv);
+}
+async function ocrGemini(cv, retried){
+  const key=(store.conf.gemini||'').trim();
+  const model=(store.conf.geminiModel||'gemini-3.8-flash').trim();
+  if(!key) throw new Error('Gemini API Key가 설정되지 않았습니다. 설정 탭에서 입력하세요.');
+  const prompt = '이 사진은 건축물 정보통신설비의 명판입니다. 적힌 문자를 빠짐없이 그대로 읽고, 아래 JSON만 출력하세요. 추측하지 말고 보이지 않는 항목은 빈 문자열로 두세요.\n'
+    + '{"raw":"명판에 적힌 모든 글자를 줄바꿈 포함 그대로","name":"설비명","maker":"제조사","model":"모델명","spec":"용량/정격(예: 10kVA, 220V, 100Ah)","date":"제조일자","sn":"제조번호"}';
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,{
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ contents:[{parts:[{text:prompt},{inline_data:{mime_type:'image/png',data:b64(cv)}}]}],
+      generationConfig:{temperature:0, responseMimeType:'application/json'} })
+  });
+  if(!r.ok){
+    const body=await r.text();
+    const alt=(body.match(/models\/([a-z0-9.\-]+)\s+for the latest/i)||[])[1]
+           || (body.match(/use\s+models\/([a-z0-9.\-]+)/i)||[])[1];
+    if(r.status===404 && alt && alt!==model && !retried){
+      store.conf.geminiModel=alt; persist();                 // 구글이 알려준 모델로 갈아끼우고 재시도
+      const f=$('#mGemini'); if(f) f.value=alt;
+      setStatus('#ocrStatus', `모델을 ${alt} 로 바꾸고 다시 시도합니다…`);
+      return ocrGemini(cv, true);
+    }
+    if(r.status===404 && alt && alt!==model)
+      throw new Error(`"${model}" 과 "${alt}" 모두 호출에 실패했습니다.\n\n${body.slice(0,240)}`);
+    throw new Error('Gemini '+r.status+': '+body.slice(0,300));
+  }
+  const j = await r.json();
+  const t = j?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  try{ const o=JSON.parse(t); lastStruct=o; return o.raw || t; }catch(e){ lastStruct=null; return t; }
+}
+async function ocrClova(cv){
+  const url=(store.conf.clovaUrl||'').trim(), sec=(store.conf.clovaSec||'').trim();
+  if(!url||!sec) throw new Error('CLOVA OCR의 Invoke URL과 Secret Key가 필요합니다.');
+  const r = await fetch(url,{ method:'POST',
+    headers:{'Content-Type':'application/json','X-OCR-SECRET':sec},
+    body: JSON.stringify({ version:'V2', requestId:String(Date.now()), timestamp:Date.now(),
+      images:[{format:'png', name:'nameplate', data:b64(cv)}] })
+  });
+  if(!r.ok) throw new Error('CLOVA '+r.status+': '+(await r.text()).slice(0,300));
+  const j = await r.json();
+  const f = j?.images?.[0]?.fields || [];
+  let out='', prevBreak=true;
+  f.forEach(x=>{ out += (prevBreak?'':' ') + (x.inferText||''); if(x.lineBreak){ out+='\n'; prevBreak=true; } else prevBreak=false; });
+  return out.trim();
+}
+async function ocrGVision(cv){
+  const key=(store.conf.gv||'').trim();
+  if(!key) throw new Error('Google Cloud Vision API Key가 필요합니다.');
+  const r = await fetch('https://vision.googleapis.com/v1/images:annotate?key='+encodeURIComponent(key),{
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ requests:[{ image:{content:b64(cv)},
+      features:[{type:'DOCUMENT_TEXT_DETECTION'}], imageContext:{languageHints:['ko','en']} }] })
+  });
+  if(!r.ok) throw new Error('Vision '+r.status+': '+(await r.text()).slice(0,300));
+  const j=await r.json();
+  if(j?.responses?.[0]?.error) throw new Error(j.responses[0].error.message);
+  return j?.responses?.[0]?.fullTextAnnotation?.text || '';
+}
+
+/* ---------- 사전 보정 ---------- */
+let lastStruct=null, lastRaw='';
+function lines(t){ return (t||'').split('\n').map(s=>s.trim()).filter(Boolean); }
+function bigrams(s){ s=s.replace(/\s+/g,''); const o=[]; for(let i=0;i<s.length-1;i++) o.push(s.slice(i,i+2)); return o.length?o:[s]; }
+function dice(a,b){
+  const A=bigrams(a), B=bigrams(b); const m=new Map();
+  A.forEach(x=>m.set(x,(m.get(x)||0)+1));
+  let hit=0; B.forEach(x=>{ const c=m.get(x); if(c>0){hit++; m.set(x,c-1);} });
+  return 2*hit/(A.length+B.length);
+}
+function lev(a,b){
+  a=a.replace(/\s+/g,''); b=b.replace(/\s+/g,'');
+  const m=a.length,n=b.length; if(!m) return n; if(!n) return m;
+  let prev=Array.from({length:n+1},(_,i)=>i), cur=new Array(n+1);
+  for(let i=1;i<=m;i++){ cur[0]=i;
+    for(let j=1;j<=n;j++) cur[j]=Math.min(prev[j]+1, cur[j-1]+1, prev[j-1]+(a[i-1]===b[j-1]?0:1));
+    [prev,cur]=[cur,prev];
+  }
+  return prev[n];
+}
+function score(a,b){
+  const d=dice(a,b);
+  const l=1 - lev(a,b)/Math.max(a.replace(/\s/g,'').length, b.replace(/\s/g,'').length, 1);
+  return 0.55*d + 0.45*l;
+}
+function suggest(text, dictText, topN){
+  const cands = lines(dictText);
+  const toks = lines(text).concat(lines(text).join(' ').split(/[\s,·/()\[\]]+/)).filter(s=>s.length>=2);
+  const best = new Map();
+  cands.forEach(c=>{ let s=0; toks.forEach(t=>{ const v=score(t,c); if(v>s) s=v; }); if(s>0.38) best.set(c,s); });
+  return [...best.entries()].sort((a,b)=>b[1]-a[1]).slice(0,topN||3);
+}
+function extract(text){
+  const t=text||'';
+  const pick=(re)=>{ const m=t.match(re); return m? (m[1]||m[0]).trim() : ''; };
+  return {
+    spec: pick(/(\d+(?:\.\d+)?\s?(?:kVA|KVA|VA|kW|KW|W|Ah|AH|V|A|Mbps|Gbps|CH|ch)\b)/),
+    date: pick(/((?:19|20)\d{2}\s*[.\-/년]\s*(?:0?[1-9]|1[0-2])(?:\s*[.\-/월]\s*(?:0?[1-9]|[12]\d|3[01]))?)/),
+    sn:   pick(/(?:S\/?N|SER(?:IAL)?(?:\s?NO)?|제조번호|기기번호)[\s.:#]*([A-Z0-9][A-Z0-9\-]{3,})/i),
+    model:pick(/(?:MODEL|MODEL\s?NO|형식|형명|모델)[\s.:#]*([A-Z0-9][A-Z0-9\-/]{2,})/i)
+         || pick(/\b([A-Z]{2,}[-\s]?\d{2,}[A-Z0-9\-]*)\b/)
+  };
+}
+/* ===== KC 라벨 해석 ===== */
+/* OCR이 자주 헷갈리는 글자를 한 글자로 뭉쳐서 비교용 표준형을 만든다 */
+function canonChar(c){
+  const m={O:'0',D:'0',Q:'0',U:'0',I:'1',L:'1',J:'1','|':'1',Z:'2',S:'5',G:'6',B:'8',W:'M',V:'M',A:'4',T:'7',Y:'V'};
+  c=String(c).toUpperCase(); return m[c]||c;
+}
+function canon(s){ return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'').split('').map(canonChar).join(''); }
+
+/* 닻 문구: 긴 것부터 맞춰야 "기자재의 명칭(모델명)"이 "모델명"에 먹히지 않는다 */
+const ANCHORS=[
+  {key:'model', words:['모델명','모델번호','모델','형식명','형식','형명','형번']},
+  {key:'pname', words:['기자재의명칭','기자재명칭','품명','품목명','제품명','기기명','장치명','설비명']},
+  {key:'maker', words:['제조자명','제조사명','제조원명','상호또는성명','상호명','제조자및제조국가','제조자','제조사','제조원','신청자','상호']},
+  {key:'cert',  words:['적합성평가정보','인증번호','식별부호','등록번호']},
+  {key:'origin',words:['제조국가','제조국','원산지']},
+  {key:'date',  words:['제조연월일','제조연월','제조년월','제조일자','제조일']}
+];
+const ANCHOR_FLAT = ANCHORS.flatMap(a=>a.words.map(w=>({key:a.key,w})))
+  .sort((a,b)=>b.w.length-a.w.length);
+
+function findAnchor(nospace, word){
+  const i = nospace.indexOf(word);
+  if(i>=0) return i;
+  if(word.length<4) return -1;            // 짧은 닻에 흐린 매칭을 허용하면 오탐이 쏟아진다
+  for(let s=0; s<=nospace.length-word.length; s++){
+    if(lev(nospace.substr(s,word.length), word)<=1) return s;
+  }
+  return -1;
+}
+/* 공백을 지운 좌표를 원문 좌표로 되돌리기 위한 색인 */
+function spaceMap(ln){
+  const idx=[]; for(let i=0;i<ln.length;i++) if(!/\s/.test(ln[i])) idx.push(i);
+  return idx;
+}
+const NOISE=/^[^가-힣ㄱ-ㅎA-Za-z0-9]+$/;
+const LEAD=/^[\s:：;.。,、·|\-=_~>)）]+/;
+function stripLead(v){
+  return v.replace(LEAD,'')
+          // "(모델명)" 같은 보조 표기만 건너뛴다. "(주)"는 상호의 일부라 남긴다
+          .replace(/^[(（]([^)）]{0,12})[)）]/, (m,inner)=> /명|모델|형식|규격|MODEL/i.test(inner) ? '' : m)
+          .replace(LEAD,'');
+}
+function cleanValue(v){
+  v = stripLead(v);
+  const toks=[]; let len=0;
+  for(const t of v.split(/\s+/)){
+    if(!t) continue;
+    if(NOISE.test(t)) break;                       // 기호 덩어리가 나오면 거기서 값이 끝난 것
+    if(t.length===1 && !/[가-힣0-9]/.test(t)) break;
+    if(/[^가-힣ㄱ-ㅎA-Za-z0-9()（）./\-_]/.test(t)) break;   // 엉뚱한 기호가 섞인 토막은 값이 아니다
+    toks.push(t); len+=t.length;
+    if(toks.length>=2 || len>=20) break;
+  }
+  return toks.join(' ').replace(/[\s:：.。,、·|\-=_]+$/,'').trim();
+}
+function parseAnchors(text){
+  const out={};
+  lines(text).forEach(ln=>{
+    const map=spaceMap(ln), ns=ln.replace(/\s/g,''), used=[];
+    ANCHOR_FLAT.forEach(({key,w})=>{
+      if(out[key]) return;
+      const i = findAnchor(ns, w);
+      if(i<0) return;
+      if(used.some(([a,b])=> i>=a && i<b)) return;   // 이미 읽어낸 구간 안쪽은 다시 집지 않는다
+      const end = i+w.length;
+      let v = stripLead(end<map.length ? ln.slice(map[end]) : '');
+      // 같은 줄에 다음 항목이 이어지면 거기서 끊는다 (공백을 지운 좌표로 찾아 원문에서 자른다)
+      const nsV=v.replace(/\s/g,''), mapV=spaceMap(v);
+      let cut=nsV.length;
+      ANCHOR_FLAT.forEach(o=>{ const j=nsV.indexOf(o.w); if(j>=2 && j<cut) cut=j; });
+      if(cut<nsV.length) v=v.slice(0, mapV[cut]);
+      v = cleanValue(v);
+      if(key==='date' && !/\d{2}/.test(v)) return;             // 날짜 자리에 숫자가 없으면 오탐
+      if((key==='maker'||key==='origin'||key==='pname') && !/[가-힣A-Za-z0-9]{2}/.test(v)) return;
+      if(v.length>=2 && v.length<=40){ out[key]=v; used.push([i, end + v.replace(/\s/g,'').length]); }
+    });
+  });
+  return out;
+}
+
+/* 여러 장을 찍었을 때: 프레임마다 닻을 읽고 가장 많이 나온 값을 고른다 */
+function voteAnchors(texts){
+  const bag={};
+  texts.forEach(t=>{ const a=parseAnchors(t);
+    Object.keys(a).forEach(k=>{ (bag[k]=bag[k]||[]).push(a[k]); }); });
+  const out={};
+  Object.keys(bag).forEach(k=>{
+    const c=new Map();
+    bag[k].forEach(v=>c.set(v,(c.get(v)||0)+1));
+    out[k]=[...c.entries()].sort((a,b)=> b[1]-a[1] || b[0].length-a[0].length)[0][0];
+  });
+  return out;
+}
+
+/* 모델코드 토막 수집 → 비슷한 것끼리 묶기 → 자리별 다수결 */
+function modelTokens(text){
+  const raw = String(text||'').toUpperCase().match(/[A-Z0-9][A-Z0-9\-.]{3,}/g) || [];
+  const ok = s => s.length>=5 && /[A-Z]/.test(s) && /[0-9]/.test(s);
+  const out=[];
+  raw.map(s=>s.replace(/^[^A-Z0-9]+|[^A-Z0-9]+$/g,'')).forEach(s=>{
+    const segs = s.split(/[-.]+/).filter(Boolean);
+    if(segs.length>=3){ segs.filter(ok).forEach(x=>out.push(x)); }   // 인증번호는 토막으로 쪼갠다
+    else if(ok(s)) out.push(s);
+  });
+  return out;
+}
+function align(a,b){                       // b를 a의 자리에 맞춰 늘어놓는다
+  const m=a.length,n=b.length;
+  const D=Array.from({length:m+1},()=>new Array(n+1).fill(0));
+  const P=Array.from({length:m+1},()=>new Array(n+1).fill(0));
+  for(let i=1;i<=m;i++){D[i][0]=-i;P[i][0]=1;}
+  for(let j=1;j<=n;j++){D[0][j]=-j;P[0][j]=2;}
+  for(let i=1;i<=m;i++)for(let j=1;j<=n;j++){
+    const s = a[i-1]===b[j-1] ? 2 : (canonChar(a[i-1])===canonChar(b[j-1]) ? 1 : -1);
+    const d=D[i-1][j-1]+s, u=D[i-1][j]-1, l=D[i][j-1]-1;
+    if(d>=u&&d>=l){D[i][j]=d;P[i][j]=0;} else if(u>=l){D[i][j]=u;P[i][j]=1;} else {D[i][j]=l;P[i][j]=2;}
+  }
+  const out=new Array(m).fill(null);
+  let i=m,j=n;
+  while(i>0&&j>0){ const p=P[i][j]; if(p===0){out[i-1]=b[j-1];i--;j--;} else if(p===1){i--;} else {j--;} }
+  return out;
+}
+function vote(members){
+  const uniq=[...new Set(members)];
+  if(uniq.length===1) return {code:uniq[0], conf:1, n:members.length, unanimous:true};
+  const pivot = members.slice().sort((a,b)=>b.length-a.length)[0];
+  const cols = pivot.split('').map(()=>({}));
+  members.forEach(m=>align(pivot,m).forEach((ch,i)=>{ if(ch) cols[i][ch]=(cols[i][ch]||0)+1; }));
+  let agree=0, counted=0;
+  const code = cols.map((h,i)=>{
+    let best=pivot[i], bc=-1, tot=0;
+    for(const k in h){ tot+=h[k]; if(h[k]>bc || (h[k]===bc && k===pivot[i])){ bc=h[k]; best=k; } }
+    if(tot){ agree += bc/tot; counted++; }
+    return best;
+  }).join('');
+  const unanimous = new Set(members.map(canon)).size===1;
+  return {code, conf: counted? agree/counted : 0, n: members.length, unanimous};
+}
+function clusterCodes(text){
+  const toks = modelTokens(text);
+  const groups=[];
+  toks.forEach(t=>{
+    const c=canon(t);
+    const g=groups.find(g=>dice(canon(g.members[0]), c)>0.5 || lev(canon(g.members[0]),c)<=2);
+    if(g) g.members.push(t); else groups.push({members:[t]});
+  });
+  return groups.map(g=>Object.assign(vote(g.members),{members:g.members}))
+               .sort((a,b)=> (b.n*b.conf) - (a.n*a.conf));
+}
+
+/* KC 식별부호: 앞 두 토막은 정해진 값이라 한 글자 오인식은 되돌릴 수 있다 */
+const CERT_P1=['MSIP','KCC','R'], CERT_P2=['REM','REI','CRM','CMM','RMM','SRM','RRM','RRL','RRI','R','C'];
+function fixSeg(seg, list){
+  const up=seg.toUpperCase();
+  if(list.includes(up)) return {v:up, fixed:false};
+  const hit=list.find(x=>Math.abs(x.length-up.length)<=1 && lev(up,x)<=1);
+  return hit ? {v:hit, fixed:true} : {v:up, fixed:false};
+}
+function findCert(text){
+  const t=String(text||'').toUpperCase().replace(/\s*[-–—]\s*/g,'-');
+  const re=/([A-Z]{1,6})-([A-Z]{1,5})-([A-Z0-9]{2,8})-([A-Z0-9][A-Z0-9-]{2,})/g;
+  let m, best=null;
+  while((m=re.exec(t))){
+    const p1=fixSeg(m[1],CERT_P1), p2=fixSeg(m[2],CERT_P2);
+    const sc=(p1.v===m[1]?2:p1.fixed?1:0)+(p2.v===m[2]?2:p2.fixed?1:0);
+    const cand={p1:p1.v,p2:p2.v,maker:m[3].toUpperCase(),model:m[4].toUpperCase(),
+                fixed:p1.fixed||p2.fixed, raw:m[0], score:sc};
+    if(!best || sc>best.score) best=cand;
+  }
+  return best;
+}
+
+function renderKc(text, texts){
+  const a = (texts && texts.length>1) ? voteAnchors(texts) : parseAnchors(text);
+  const cert = findCert(text);
+  const groups = clusterCodes(text);
+  const host = $('#kcHost');
+
+  if(!Object.keys(a).length && !cert && !groups.length){
+    host.innerHTML='<p class="empty">KC 라벨 형식의 단서를 찾지 못했습니다. 일반 명판이면 아래 항목에 직접 입력하세요.</p>';
+    $('#cardKc').hidden=false; return;
+  }
+
+  /* 인증번호 뒤토막도 모델코드 후보에 합류시켜 함께 투표 */
+  let model=null;
+  if(groups.length){
+    const g=groups[0];
+    if(cert && cert.model && !g.members.includes(cert.model)) g.members.push(cert.model);
+    model = Object.assign(vote(g.members), {members:g.members});
+  } else if(cert && cert.model){
+    model = {code:cert.model, conf:0.5, n:1, members:[cert.model]};
+  }
+
+  let h='<div class="kv">';
+  const row=(k,v,cls,extra)=> h+=`<span class="k">${k}</span><span class="v ${cls||''}">${esc(v)}</span><span>${extra||''}</span>`;
+
+  if(cert){
+    const full=`${cert.p1}-${cert.p2}-${cert.maker}-${model?model.code:cert.model}`;
+    row('인증번호', full, 'big', `<button class="btn sm" data-set="fCert" data-val="${esc(full)}">적용</button>`);
+    if(cert.fixed) h+=`<span></span><span class="frag">앞토막을 인식된 "${esc(cert.raw.split('-').slice(0,2).join('-'))}"에서 표준값으로 보정했습니다</span><span></span>`;
+  }
+  if(model){
+    const pct=Math.round(model.conf*100);
+    const cls = (model.unanimous && model.n>=2) ? 'g' : model.conf>=0.75 ? 'w' : 'b';
+    row('모델코드', model.code, 'big',
+      `<span class="pill ${cls}">${pct}%</span> <button class="btn sm" data-set="fModel" data-val="${esc(model.code)}">적용</button>`);
+    h+=`<span></span><span class="frag">토막 ${model.n}개 교차 대조: ${model.members.map(esc).join(' · ')}</span><span></span>`;
+    if(!model.unanimous || model.n<2)
+      h+=`<span></span><span class="frag" style="color:var(--warn)">일치율이 낮습니다. 이 코드는 그대로 믿지 말고 다시 촬영하거나 클라우드 엔진으로 재인식하세요.</span><span></span>`;
+  }
+  if(cert || model) h+='<hr>';
+  const L={pname:'품명 · 기자재 명칭',model:'모델명',maker:'제조자명',origin:'제조국',date:'제조연월'};
+  const F={pname:'fName',model:'fModel',maker:'fMaker',origin:null,date:'fDate'};
+  Object.keys(L).forEach(k=>{ if(a[k]) row(L[k], a[k], '',
+    F[k]?`<button class="btn sm" data-set="${F[k]}" data-val="${esc(a[k])}">적용</button>`:''); });
+  host.innerHTML = h+'</div>';
+
+  host.querySelectorAll('[data-set]').forEach(b=>b.addEventListener('click',()=>{
+    $('#'+b.dataset.set).value=b.dataset.val; b.textContent='적용됨'; b.disabled=true;
+  }));
+  $('#cardKc').hidden=false;
+
+  /* 자동 채움: 확실한 것만 */
+  if(cert && !$('#fCert').value) $('#fCert').value=`${cert.p1}-${cert.p2}-${cert.maker}-${model?model.code:cert.model}`;
+  if(a.maker && !$('#fMaker').value) $('#fMaker').value=a.maker;
+  if(a.pname && !$('#fName').value)  $('#fName').value=a.pname;
+  if(a.model && !$('#fModel').value) $('#fModel').value=a.model;
+  if(a.date  && !$('#fDate').value)  $('#fDate').value=a.date;
+  if(model && model.unanimous && model.n>=2 && !$('#fModel').value) $('#fModel').value=model.code;
+}
+
+function fillFields(text, texts){
+  lastRaw=text;
+  const ex = extract(text);
+  const s = lastStruct || {};
+  $('#fName').value  = s.name  || '';
+  $('#fMaker').value = s.maker || '';
+  $('#fModel').value = s.model || ex.model || '';
+  $('#fSpec').value  = s.spec  || ex.spec  || '';
+  $('#fDate').value  = s.date  || ex.date  || '';
+  $('#fSn').value    = s.sn    || ex.sn    || '';
+  chips('#chName',  suggest(text, store.dict.name),  '#fName');
+  chips('#chMaker', suggest(text, store.dict.maker), '#fMaker');
+  if(!$('#fName').value){ const top=suggest(text,store.dict.name,1)[0]; if(top&&top[1]>0.6) $('#fName').value=top[0]; }
+  if(!$('#fMaker').value){ const top=suggest(text,store.dict.maker,1)[0]; if(top&&top[1]>0.65) $('#fMaker').value=top[0]; }
+  try{ renderKc(text, texts); }catch(e){ $('#cardKc').hidden=true; }
+}
+function chips(host, list, target){
+  const h=$(host); h.innerHTML='';
+  if(!list.length){ h.innerHTML='<span class="status">사전에서 일치하는 후보 없음</span>'; return; }
+  list.forEach(([v,s])=>{
+    const b=document.createElement('button'); b.type='button'; b.className='chip';
+    b.innerHTML = v + '<span class="pct">'+Math.round(s*100)+'%</span>';
+    b.addEventListener('click',()=>{ $(target).value=v; });
+    h.appendChild(b);
+  });
+}
+
+/* ---------- 저장 / 목록 ---------- */
+$('#btnClear').addEventListener('click',()=>{
+  ['fName','fMaker','fModel','fSpec','fDate','fSn','fCert'].forEach(id=>$('#'+id).value='');
+});
+$('#btnSave').addEventListener('click',()=>{
+  const rec={
+    id:Date.now(), ts:new Date().toISOString(),
+    name:$('#fName').value.trim(), maker:$('#fMaker').value.trim(), model:$('#fModel').value.trim(),
+    spec:$('#fSpec').value.trim(), date:$('#fDate').value.trim(), sn:$('#fSn').value.trim(),
+    cert:$('#fCert').value.trim(),
+    loc:$('#fLoc').value.trim(), qty:+$('#fQty').value||1,
+    engine:$('#engineSel').value, raw:lastRaw,
+    prep:{ scale:+$('#sScale').value, contrast:+$('#sContrast').value, bright:+$('#sBright').value,
+           sharp:+$('#sSharp').value, gray:$('#cGray').checked, thr:$('#cThr').checked, thrC:+$('#sThr').value, inv:$('#cInv').checked,
+           clean:$('#cClean').checked, lines:$('#cLines').checked, nLines:lineBoxes.length },
+    truth:''
+  };
+  if(!rec.name && !rec.model){ setStatus('#saveStatus','설비명이나 모델명 중 하나는 입력하세요.','err'); return; }
+  store.items.unshift(rec); persist();
+  setStatus('#saveStatus',`저장됨 · 총 ${store.items.length}건`,'ok');
+  ['fName','fMaker','fModel','fSpec','fDate','fSn','fCert'].forEach(id=>$('#'+id).value='');
+  $('#cardKc').hidden=true;
+});
+
+function renderList(){
+  const h=$('#listHost');
+  if(!store.items.length){ h.innerHTML='<p class="empty">아직 저장된 설비가 없습니다. 인식 작업 탭에서 명판을 읽어 저장하세요.</p>'; return; }
+  let html='<div class="tbl-wrap"><table><thead><tr><th>설비명</th><th>제조사</th><th>모델</th><th>용량</th><th>제조일</th><th>S/N</th><th>KC인증번호</th><th>위치</th><th>수량</th><th></th></tr></thead><tbody>';
+  store.items.forEach(r=>{
+    html += `<tr data-id="${r.id}"><td>${esc(r.name)}</td><td>${esc(r.maker)}</td><td class="num">${esc(r.model)}</td><td class="num">${esc(r.spec)}</td><td class="num">${esc(r.date)}</td><td class="num">${esc(r.sn)}</td><td class="num">${esc(r.cert)}</td><td>${esc(r.loc)}</td><td class="num">${r.qty}</td><td><button class="btn sm ghost del">삭제</button></td></tr>`;
+  });
+  h.innerHTML = html+'</tbody></table></div>';
+  h.querySelectorAll('.del').forEach(b=>b.addEventListener('click',e=>{
+    const id=+e.target.closest('tr').dataset.id;
+    store.items=store.items.filter(x=>x.id!==id); persist(); renderList();
+  }));
+}
+function esc(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function dl(name, text, mime){
+  const b=new Blob([text],{type:(mime||'text/plain')+';charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+}
+$('#btnCsv').addEventListener('click',()=>{
+  const head=['설비명','제조사','모델명','용량','제조일자','제조번호','KC인증번호','설치위치','수량','엔진','인식시각'];
+  const rows=store.items.map(r=>[r.name,r.maker,r.model,r.spec,r.date,r.sn,r.cert||'',r.loc,r.qty,r.engine,r.ts]);
+  const csv='﻿'+[head].concat(rows).map(r=>r.map(c=>'"'+String(c==null?'':c).replace(/"/g,'""')+'"').join(',')).join('\r\n');
+  dl('명판인식_'+stamp()+'.csv', csv, 'text/csv');
+});
+$('#btnJson').addEventListener('click',()=>{
+  const out = store.items.map(r=>({
+    설비명:r.name, 제조사:r.maker, 모델명:r.model, 용량:r.spec,
+    제조일자:r.date, 제조번호:r.sn, KC인증번호:r.cert||'', 설치위치:r.loc, 수량:r.qty, 출처:'명판OCR', 인식시각:r.ts
+  }));
+  dl('명판인식_'+stamp()+'.json', JSON.stringify(out,null,2), 'application/json');
+});
+$('#btnWipe').addEventListener('click',()=>{
+  if(!store.items.length) return;
+  store.items=[]; persist(); renderList(); setStatus('#listStatus','목록을 비웠습니다.');
+});
+function stamp(){ const d=new Date(); const p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`; }
+
+/* ---------- 정확도 ---------- */
+function charAcc(truth, got){
+  if(!truth) return null;
+  const a=truth.replace(/\s+/g,''), b=(got||'').replace(/\s+/g,'');
+  return Math.max(0, 1 - lev(a,b)/Math.max(a.length,1));
+}
+function renderEval(){
+  const tested = store.items.filter(r=>r.truth && r.truth.trim());
+  const accs = tested.map(r=>charAcc(r.truth, r.raw)).filter(v=>v!==null);
+  const avg = accs.length ? accs.reduce((a,b)=>a+b,0)/accs.length : 0;
+  const pass = accs.filter(v=>v>=0.9).length;
+  $('#kpis').innerHTML = `
+    <div class="kpi"><div class="v">${store.items.length}</div><div class="l">전체 건수</div></div>
+    <div class="kpi"><div class="v">${tested.length}</div><div class="l">정답 입력 건수</div></div>
+    <div class="kpi"><div class="v">${accs.length?Math.round(avg*100):'—'}${accs.length?'%':''}</div><div class="l">평균 문자 정확도</div></div>
+    <div class="kpi"><div class="v">${accs.length?pass:'—'}</div><div class="l">90% 이상 성공</div></div>`;
+  const h=$('#evalHost');
+  if(!store.items.length){ h.innerHTML='<p class="empty">먼저 명판을 인식해 저장하세요.</p>'; return; }
+  let html='<div class="tbl-wrap"><table><thead><tr><th style="min-width:150px">설비명</th><th>엔진</th><th style="min-width:200px">정답 (명판 실제 문자)</th><th>정확도</th></tr></thead><tbody>';
+  store.items.forEach(r=>{
+    const a=charAcc(r.truth,r.raw);
+    const pill = a===null ? '<span class="status">—</span>'
+      : `<span class="pill ${a>=0.9?'g':a>=0.6?'w':'b'}">${Math.round(a*100)}%</span>`;
+    html += `<tr data-id="${r.id}"><td>${esc(r.name)||'<span class="status">(미입력)</span>'}</td><td class="num">${esc(r.engine)}</td>
+      <td><input class="truth" value="${esc(r.truth)}" placeholder="명판에 실제로 적힌 핵심 문자" style="width:100%;background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:13px"></td>
+      <td>${pill}</td></tr>`;
+  });
+  h.innerHTML=html+'</tbody></table></div>';
+  h.querySelectorAll('.truth').forEach(inp=>{
+    inp.addEventListener('change',e=>{
+      const id=+e.target.closest('tr').dataset.id;
+      const r=store.items.find(x=>x.id===id); if(r){ r.truth=e.target.value; persist(); renderEval(); }
+    });
+  });
+}
+$('#btnReport').addEventListener('click',()=>{
+  const tested=store.items.filter(r=>r.truth && r.truth.trim());
+  if(!tested.length){ setStatus('#evalStatus','정답을 입력한 건이 없습니다.','err'); return; }
+  let md = `# 명판 OCR 실패 리포트\n\n- 생성: ${new Date().toLocaleString('ko-KR')}\n- 테스트 건수: ${tested.length}\n\n`;
+  const accs=tested.map(r=>charAcc(r.truth,r.raw));
+  md += `- 평균 문자 정확도: ${Math.round(accs.reduce((a,b)=>a+b,0)/accs.length*100)}%\n- 90% 이상: ${accs.filter(v=>v>=0.9).length}건 / 60% 미만: ${accs.filter(v=>v<0.6).length}건\n\n---\n\n`;
+  tested.forEach((r,i)=>{
+    const a=charAcc(r.truth,r.raw);
+    md += `## ${i+1}. ${r.name||'(설비명 미입력)'} — 정확도 ${Math.round(a*100)}%\n\n`;
+    md += `- 엔진: \`${r.engine}\`\n- 전처리: 확대 ${r.prep.scale}×, 대비 ${r.prep.contrast}, 밝기 ${r.prep.bright}, 선명도 ${r.prep.sharp}, 흑백 ${r.prep.gray?'O':'X'}, 이진화 ${r.prep.thr?'O(C='+r.prep.thrC+')':'X'}, 반전 ${r.prep.inv?'O':'X'}, 영역정리 ${r.prep.clean?'O':'X'}, 줄단위 ${r.prep.lines?('O('+(r.prep.nLines||0)+'줄)'):'X'}\n`;
+    md += `\n**정답**\n\`\`\`\n${r.truth}\n\`\`\`\n\n**인식 결과**\n\`\`\`\n${r.raw||'(없음)'}\n\`\`\`\n\n`;
+  });
+  md += `---\n\n이 리포트를 AI에게 그대로 전달하고, 정확도가 낮은 건의 전처리 설정과 엔진을 어떻게 바꿔야 하는지 물어보세요.\n`;
+  dl('OCR실패리포트_'+stamp()+'.md', md, 'text/markdown');
+  setStatus('#evalStatus','리포트를 내보냈습니다.','ok');
+});
+
+/* ---------- 사전 / 설정 ---------- */
+function loadDict(){ $('#dName').value=store.dict.name; $('#dMaker').value=store.dict.maker; }
+$('#btnDictSave').addEventListener('click',()=>{
+  store.dict={name:$('#dName').value, maker:$('#dMaker').value}; persist();
+  setStatus('#dictStatus',`저장됨 · 설비명 ${lines(store.dict.name).length}개, 제조사 ${lines(store.dict.maker).length}개`,'ok');
+});
+$('#btnDictReset').addEventListener('click',()=>{ store.dict={name:DEF_NAME,maker:DEF_MAKER}; persist(); loadDict(); setStatus('#dictStatus','기본값으로 되돌렸습니다.'); });
+
+function loadConf(){
+  $('#kGemini').value=store.conf.gemini||''; $('#mGemini').value=store.conf.geminiModel||'gemini-3.8-flash';
+  $('#kClovaUrl').value=store.conf.clovaUrl||''; $('#kClovaSec').value=store.conf.clovaSec||'';
+  $('#kGv').value=store.conf.gv||'';
+  if(store.conf.engine) $('#engineSel').value=store.conf.engine;
+}
+$('#btnConfSave').addEventListener('click',()=>{
+  store.conf={ gemini:$('#kGemini').value.trim(), geminiModel:$('#mGemini').value.trim()||'gemini-3.8-flash',
+    clovaUrl:$('#kClovaUrl').value.trim(), clovaSec:$('#kClovaSec').value.trim(), gv:$('#kGv').value.trim(),
+    engine:$('#engineSel').value };
+  persist(); setStatus('#confStatus','저장되었습니다. 이 기기에만 보관됩니다.','ok');
+});
+$('#engineSel').addEventListener('change',()=>{ store.conf.engine=$('#engineSel').value; persist(); });
+
+/* ===== 라이브 촬영 ===== */
+const cam=$('#cam'), camOv=$('#camOv'), mCv=document.createElement('canvas');
+let camStream=null, camTimer=null, camRAF=null, prevGray=null, steady=0, busy=false;
+const SHARP_OK=110, MOVE_OK=3.2;
+
+function guideRect(vw,vh){
+  const w=Math.round(vw*0.88);
+  const h=Math.round(Math.min(vh*0.72, w/2.0));
+  return {x:Math.round((vw-w)/2), y:Math.round((vh-h)/2), w, h};
+}
+function drawGuide(ready){
+  const vw=cam.videoWidth, vh=cam.videoHeight; if(!vw) return;
+  camOv.width=vw; camOv.height=vh;
+  const g=camOv.getContext('2d'), r=guideRect(vw,vh);
+  const css=getComputedStyle(document.documentElement);
+  const ac=ready? (css.getPropertyValue('--accent').trim()||'#2f6f4e') : 'rgba(255,255,255,.75)';
+  g.clearRect(0,0,vw,vh);
+  g.fillStyle='rgba(0,0,0,.35)';
+  g.fillRect(0,0,vw,r.y); g.fillRect(0,r.y+r.h,vw,vh-r.y-r.h);
+  g.fillRect(0,r.y,r.x,r.h); g.fillRect(r.x+r.w,r.y,vw-r.x-r.w,r.h);
+  g.strokeStyle=ac; g.lineWidth=Math.max(3,vw/300);
+  const c=Math.min(r.w,r.h)*0.18;
+  [[r.x,r.y,1,1],[r.x+r.w,r.y,-1,1],[r.x+r.w,r.y+r.h,-1,-1],[r.x,r.y+r.h,1,-1]].forEach(([x,y,sx,sy])=>{
+    g.beginPath(); g.moveTo(x,y+sy*c); g.lineTo(x,y); g.lineTo(x+sx*c,y); g.stroke();
+  });
+  camRAF=requestAnimationFrame(()=>drawGuide(steady>=2));
+}
+function measure(){
+  const vw=cam.videoWidth, vh=cam.videoHeight; if(!vw) return null;
+  const r=guideRect(vw,vh);
+  mCv.width=160; mCv.height=Math.max(2,Math.round(160*r.h/r.w));
+  const g=mCv.getContext('2d',{willReadFrequently:true});
+  g.drawImage(cam, r.x,r.y,r.w,r.h, 0,0,mCv.width,mCv.height);
+  const W=mCv.width,H=mCv.height, d=g.getImageData(0,0,W,H).data;
+  const gray=new Float32Array(W*H);
+  for(let i=0,p=0;i<d.length;i+=4,p++) gray[p]=(d[i]*299+d[i+1]*587+d[i+2]*114)/1000;
+  let s=0,s2=0,n=0;                                    // 라플라시안 분산 = 초점이 맞은 정도
+  for(let y=1;y<H-1;y++) for(let x=1;x<W-1;x++){
+    const p=y*W+x, l=4*gray[p]-gray[p-1]-gray[p+1]-gray[p-W]-gray[p+W];
+    s+=l; s2+=l*l; n++;
+  }
+  const sharp = n ? Math.max(0, s2/n - (s/n)*(s/n)) : 0;
+  let move=999;
+  if(prevGray && prevGray.length===gray.length){
+    let a=0; for(let p=0;p<gray.length;p++) a+=Math.abs(gray[p]-prevGray[p]);
+    move=a/gray.length;
+  }
+  prevGray=gray;
+  return {sharp, move};
+}
+function tick(){
+  const m=measure(); if(!m) return;
+  $('#mSharpV').textContent=Math.round(m.sharp);
+  $('#mMoveV').textContent=m.move>900?'—':m.move.toFixed(1);
+  $('#mSharpBar').style.width=Math.min(100,m.sharp/SHARP_OK*100)+'%';
+  $('#mMoveBar').style.width=Math.min(100,Math.max(0,100-m.move/MOVE_OK*100))+'%';
+  if(busy) return;
+  if(m.sharp>=SHARP_OK && m.move<=MOVE_OK) steady++; else steady=0;
+  if(steady>=3 && $('#camAuto').checked) burst();
+}
+function grab(){
+  const vw=cam.videoWidth, vh=cam.videoHeight, r=guideRect(vw,vh);
+  const c=document.createElement('canvas');
+  const k=Math.min(1, 2200/r.w);
+  c.width=Math.round(r.w*k); c.height=Math.round(r.h*k);
+  c.getContext('2d').drawImage(cam, r.x,r.y,r.w,r.h, 0,0,c.width,c.height);
+  return c;
+}
+async function burst(){
+  if(busy) return; busy=true; steady=0;
+  const n=+$('#camN').value||4, frames=[];
+  $('#shots').innerHTML='';
+  try{
+    for(let i=0;i<n;i++){
+      setStatus('#camStatus', `촬영 ${i+1}/${n}…`);
+      frames.push(grab());
+      await new Promise(r=>setTimeout(r,220));
+    }
+    frames.forEach(f=>{ const t=document.createElement('canvas');
+      t.width=120; t.height=Math.round(120*f.height/f.width);
+      t.getContext('2d').drawImage(f,0,0,t.width,t.height); $('#shots').appendChild(t); });
+
+    const eng=$('#engineSel').value, texts=[];
+    for(let i=0;i<frames.length;i++){
+      setStatus('#camStatus', `${i+1}/${frames.length}번째 장 인식 중…`);
+      try{ const t=await recognize(eng, frames[i]); if(t && t.trim()) texts.push(t.trim()); }
+      catch(err){ setStatus('#camStatus','인식 실패 — '+(err.message||err),'err'); busy=false; return; }
+    }
+    if(!texts.length){ setStatus('#camStatus','문자를 찾지 못했습니다. 더 가까이 비춰보세요.','err'); busy=false; return; }
+
+    const combined=texts.join('\n');
+    lastStruct=null;
+    $('#cardOcr').hidden=false; $('#cardFields').hidden=false;
+    $('#rawOut').hidden=false; $('#rawOut').textContent=texts.map((t,i)=>`[${i+1}장]\n${t}`).join('\n\n');
+    setStatus('#ocrStatus', `${texts.length}장 교차 대조 완료`, 'ok');
+    fillFields(combined, texts);
+    setStatus('#camStatus', `${texts.length}장을 겹쳐 읽었습니다. 아래에서 항목을 확인하세요.`, 'ok');
+
+    const best=frames[0];                                   // 가장 먼저 잡힌 장을 작업용으로 넘긴다
+    const img=new Image();
+    img.onload=()=>{ srcImg=img; rot=0; buildBase(); $('#btnRot').disabled=false;
+      ['#cardCrop','#cardPrep'].forEach(x=>$(x).hidden=false); fullPts(); };
+    img.src=best.toDataURL('image/png');
+  } finally { busy=false; }
+}
+$('#btnCamStart').addEventListener('click', async ()=>{
+  const secure = location.protocol==='https:' || ['localhost','127.0.0.1'].includes(location.hostname);
+  if(!secure){ setStatus('#camStatus','카메라는 HTTPS에서만 열립니다. GitHub Pages에 올리거나 로컬 서버로 띄워주세요.','err'); return; }
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ setStatus('#camStatus','이 브라우저는 카메라를 지원하지 않습니다.','err'); return; }
+  try{
+    camStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}});
+    cam.srcObject=camStream; await cam.play();
+    $('#camWrap').hidden=false; $('#camMeters').hidden=false;
+    $('#btnCamStart').disabled=true; $('#btnShot').disabled=false; $('#btnCamStop').disabled=false;
+    prevGray=null; steady=0; busy=false;
+    camTimer=setInterval(tick,200); drawGuide(false);
+    setStatus('#camStatus','명판을 틀 안에 채우고 잠시 멈춰주세요.');
+  }catch(err){ setStatus('#camStatus','카메라를 열 수 없습니다 — '+(err.message||err),'err'); }
+});
+function camStop(){
+  clearInterval(camTimer); camTimer=null;
+  if(camRAF) cancelAnimationFrame(camRAF); camRAF=null;
+  if(camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; }
+  cam.srcObject=null; $('#camWrap').hidden=true; $('#camMeters').hidden=true;
+  $('#btnCamStart').disabled=false; $('#btnShot').disabled=true; $('#btnCamStop').disabled=true;
+  setStatus('#camStatus','');
+}
+$('#btnCamStop').addEventListener('click',camStop);
+$('#btnShot').addEventListener('click',()=>burst());
+document.addEventListener('visibilitychange',()=>{ if(document.hidden && camStream) camStop(); });
+
+/* ---------- 초기화 ---------- */
+syncOut(); loadDict(); loadConf(); renderList();
+})();
+</script>
+</body>
+</html>
